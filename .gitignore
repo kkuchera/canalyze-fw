@@ -1,3 +1,8 @@
+# Directories
+bin/
+obj/
+lib/
+
 # Object files
 *.o
 *.ko
