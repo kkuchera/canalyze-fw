@@ -3,6 +3,9 @@ bin/
 obj/
 lib/
 
+# Files
+tags
+
 # Object files
 *.o
 *.ko

@@ -1,11 +1,10 @@
 #include "led.h"
 #include "stm32f0xx.h"
+#include "usbd.h"
+#include "usbd_cdc_interface.h"
 
-// Wait for a specified amount of cycles
-void delay(int cycles) {
-    volatile int i;
-    for (i=0; i < cycles; i++);
-}
+extern CAN_HandleTypeDef can_handle;
+
 
 void clock_init() {
     // TODO For robust implementation, add time-out management in while loops
@@ -21,12 +20,12 @@ void clock_init() {
     // Test if PLL is used as System clock
     if ((RCC->CFGR & RCC_CFGR_SWS) == RCC_CFGR_SWS_PLL) {
         // Select HSI as system clock
-        RCC->CFGR &= (uint32_t) (~RCC_CFGR_SW);
+        RCC->CFGR &= ~RCC_CFGR_SW;
         // Wait for HSI switched
         while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSI);
     }
     // Disable the PLL
-    RCC->CR &= (uint32_t) (~RCC_CR_PLLON);
+    RCC->CR &= ~RCC_CR_PLLON;
     // Wait until PLLRDY is cleared
     while((RCC->CR & RCC_CR_PLLRDY) != 0);
     // Change the desired parameters
@@ -41,21 +40,30 @@ void clock_init() {
     // Wait until PLLRDY is set
     while((RCC->CR & RCC_CR_PLLRDY) == 0);
     // Select PLL as system clock
-    RCC->CFGR |= (uint32_t) (RCC_CFGR_SW_PLL);
+    RCC->CFGR |= RCC_CFGR_SW_PLL;
     // Wait until the PLL is switched on
     while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL);
+
+    // Set PCLK (APB) to SYSCLK/1
+    RCC->CFGR = (RCC->CFGR & (~RCC_CFGR_PPRE)) | (RCC_CFGR_PPRE_DIV1);
+    // Set HCLK (AHB) to SYSCLK/1
+    RCC->CFGR = (RCC->CFGR & (~RCC_CFGR_HPRE)) | (RCC_CFGR_HPRE_DIV1);
+    // Set the USB clock source to PLL
+    RCC->CFGR3 = (RCC->CFGR3 & (~RCC_CFGR3_USBSW)) | (RCC_CFGR3_USBSW_PLLCLK);
+
+    // Set systick to 1ms (HCLK = PLL = 48MHz), done in HAL_Init();
+    //SysTick_Config(48000000/1000);
+    //NVIC_SetPriority(SysTick_IRQn, 0);
 }
 
 int main(void) {
+    HAL_Init();
     clock_init();
     led_init();
+    usb_init();
+
+    led_on(LED_GREEN);
 
     while(1) {
-        led_on(LED_GREEN);
-        delay(1000000);
-        led_off(LED_GREEN);
-        led_on(LED_RED);
-        delay(1000000);
-        led_off(LED_RED);
-    }
+    } 
 }

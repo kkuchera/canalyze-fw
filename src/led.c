@@ -17,3 +17,7 @@ void led_on(uint8_t led) {
 void led_off(uint8_t led) {
     GPIOB->ODR &= ~led;
 }
+
+void led_toggle(uint8_t led) {
+    GPIOB->ODR ^= led;
+}
