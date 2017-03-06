@@ -1,5 +1,10 @@
-#include "usbd_cdc_interface.h"
+#include "can.h"
 
+/**
+ * Microcontroller specific CAN initialization.
+ *
+ * Set and configures the CAN pins and interrupts
+ */
 void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
     UNUSED(hcan);
     GPIO_InitTypeDef  GPIO_InitStruct;
@@ -31,6 +36,11 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
     HAL_NVIC_EnableIRQ(CANx_RX_IRQn);
 }
 
+/**
+ * Microcontroller specific CAN deinitialization.
+ *
+ * Reset CAN, deinitialize GPIO pins and disable interrupt.
+ */
 void HAL_CAN_MspDeInit(CAN_HandleTypeDef *hcan) {
     UNUSED(hcan);
 
@@ -46,24 +56,3 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef *hcan) {
     HAL_NVIC_DisableIRQ(CANx_RX_IRQn);
 }
 
-void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim) {
-    UNUSED(htim);
-
-    // Enable TIM clock
-    TIMx_CLK_ENABLE();
-
-    // Enable TIM interrupt
-    HAL_NVIC_SetPriority(TIMx_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(TIMx_IRQn);
-}
-
-void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim) {
-    UNUSED(htim);
-
-    // Reset CANx
-    TIMx_FORCE_RESET();
-    TIMx_RELEASE_RESET();
-
-    // Disable the TIMx interrupt
-    HAL_NVIC_DisableIRQ(TIMx_IRQn);
-}

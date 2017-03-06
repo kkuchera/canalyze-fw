@@ -1,10 +1,8 @@
+#include "can.h"
 #include "led.h"
 #include "stm32f0xx.h"
 #include "usbd.h"
-#include "usbd_cdc_interface.h"
-
-extern CAN_HandleTypeDef can_handle;
-
+#include "usbd_8dev_if.h"
 
 void clock_init() {
     // TODO For robust implementation, add time-out management in while loops
@@ -56,14 +54,20 @@ void clock_init() {
     //NVIC_SetPriority(SysTick_IRQn, 0);
 }
 
+/**
+ * Monitors CAN traffic and relays it to USB interface and vise versa.
+ *
+ * @see usbd_8dev_if.c for more details on how this works.
+ */
 int main(void) {
     HAL_Init();
     clock_init();
-    led_init();
     usb_init();
+    can_init();
+    led_init();
 
     led_on(LED_GREEN);
 
-    while(1) {
-    } 
+    while (1) {
+    }
 }

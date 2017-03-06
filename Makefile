@@ -39,9 +39,6 @@ HAL_OBJS = $(patsubst $(HAL_SRCDIR)/%.c, $(CUBEOBJDIR)/%.o, $(HAL_SRCS))
 USBCORE_SRCDIR = $(CUBELIBDIR)/Middlewares/ST/STM32_USB_Device_Library/Core/Src
 USBCORE_SRCS = $(filter-out $(wildcard $(USBCORE_SRCDIR)/*template.c), $(wildcard $(USBCORE_SRCDIR)/*.c))
 USB_OBJS = $(patsubst $(USBCORE_SRCDIR)/%.c, $(CUBEOBJDIR)/%.o, $(USBCORE_SRCS))
-USBCDC_SRCDIR = $(CUBELIBDIR)/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src
-USBCDC_SRCS = $(filter-out $(wildcard $(USBCDC_SRCDIR)/*template.c), $(wildcard $(USBCDC_SRCDIR)/*.c))
-USB_OBJS += $(patsubst $(USBCDC_SRCDIR)/%.c, $(CUBEOBJDIR)/%.o, $(USBCDC_SRCS))
 
 LIBS = $(CUBELIB)
 TARGET = $(TARGETDIR)/canalyze
@@ -52,7 +49,6 @@ INCLUDE += -I $(CUBELIBDIR)/Drivers/CMSIS/Include
 INCLUDE += -I $(CUBELIBDIR)/Drivers/CMSIS/Device/ST/STM32F0xx/Include
 INCLUDE += -I $(CUBELIBDIR)/Drivers/STM32F0xx_HAL_Driver/Inc
 INCLUDE += -I $(CUBELIBDIR)/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
-INCLUDE += -I $(CUBELIBDIR)/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
 
 # The dependency file names.
 DEPS = $(OBJS:.o=.d)
@@ -93,10 +89,6 @@ $(CUBEOBJDIR)/%.o: $(HAL_SRCDIR)/%.c
 	$(CC) $(CFLAGSLIB) $(INCLUDE) -o $@ -c $<
 
 $(CUBEOBJDIR)/%.o: $(USBCORE_SRCDIR)/%.c
-	@mkdir -p $(CUBEOBJDIR)
-	$(CC) $(CFLAGSLIB) $(INCLUDE) -o $@ -c $<
-
-$(CUBEOBJDIR)/%.o: $(USBCDC_SRCDIR)/%.c
 	@mkdir -p $(CUBEOBJDIR)
 	$(CC) $(CFLAGSLIB) $(INCLUDE) -o $@ -c $<
 

@@ -61,7 +61,7 @@
 #define  USB_SIZ_STRING_SERIAL       0x1A
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
-extern USBD_DescriptorsTypeDef VCP_Desc;
+extern USBD_DescriptorsTypeDef usbd_8dev_desc;
 
 #endif /* __USBD_DESC_H */
  
