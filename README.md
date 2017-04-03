@@ -15,13 +15,11 @@ Native Linux CAN interface. This firmware can be used with the CANalyze
 - Designed for reverse engineering
 
 ## Installation
-You need the CANalyze [hardware](https://github.com/kkuchera/canalyze-hw) and a
-STM32 programmer such as
-[ST-LINK/V2](http://www.st.com/en/development-tools/st-link-v2.html).
+You need the CANalyze [hardware](https://github.com/kkuchera/canalyze-hw).
 
 Install required packages
 ```shell
-$ sudo apt-get install gcc-arm-none-eabi openocd
+$ sudo apt-get install gcc-arm-none-eabi openocd dfu-util
 $ git clone https://github.com/kkuchera/canalyze-fw
 $ cd canalyze-fw
 $ mkdir lib
@@ -29,10 +27,21 @@ $ mkdir lib
 Download and unzip
 [STM32CubeF0](http://www.st.com/en/embedded-software/stm32cubef0.html) to lib/.
 
-Make and flash the firmware onto the device.
+Connect the BOOT pins and press reset. Then run
+```shell
+$ make dfu
+```
+to make and download the firmware onto the device. Finally remove the BOOT pins
+jumper and press reset again to start the application.
+
+If you are going to do a lot of flashing it's probably easier to get a STM32
+programmer, such as the
+[ST-LINK/V2](http://www.st.com/en/development-tools/st-link-v2.html), and
+connect the SWD pins. Then you just need to run
 ```shell
 $ make flash
 ```
+when you want make and flash the firmware onto the device.
 
 ## Getting started
 Bring up CAN interface

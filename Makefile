@@ -56,9 +56,13 @@ DEPS = $(OBJS:.o=.d)
 # Make options
 default: $(TARGET).elf
 all: $(TARGET).hex $(TARGET).bin
+cubelib: $(CUBELIB)
+
 flash: $(TARGET).elf
 	openocd -f $(OPENOCD_CFG) -c "program $< verify reset exit"
-cubelib: $(CUBELIB)
+
+dfu: $(TARGET).bin
+	dfu-util -a 0 -s 0x08000000 -D $<
 
 # Application dependencies
 $(TARGET).hex: $(TARGET).elf 
