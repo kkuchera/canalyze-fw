@@ -236,8 +236,12 @@ void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef *hcan) {
     if (usbd_8dev_transmit(hcan->pRxMsg) == USBD_FAIL) {
         Error_Handler();
     }
+    //TODO occasionally receive will return HAL_BUSY and message is not
+    //received. This should be solved, perhaps by removing HAL dependency.
     if (HAL_CAN_Receive_IT(hcan, CAN_FIFO0)) {
-        Error_Handler();
+	//Try to receive again if this fails, otherwise CAN packets won't ever
+	//be received again.
+	//Error_Handler();
     }
 }
 
@@ -258,18 +262,16 @@ static uint8_t usbd_8dev_itf_rcv_data(uint8_t* buf, uint8_t *len) {
         for (i=0; i<buf_datarx.dlc; i++) {
             can_handle.pTxMsg->Data[i] = buf_datarx.data[i];
         }
-        HAL_CAN_Transmit_IT(&can_handle);
+        if (HAL_CAN_Transmit(&can_handle, 10)){
+            //Error_Handler();
+        }
+        if (usbd_8dev_receive_data_packet(&usbd_handle)) {
+            Error_Handler();
+        }
     } else {
         Error_Handler();
     }
     return (USBD_OK);
-}
-
-void HAL_CAN_TxCpltCallback(CAN_HandleTypeDef *hcan) {
-    UNUSED(hcan);
-    if (usbd_8dev_receive_data_packet(&usbd_handle)) {
-        Error_Handler();
-    }
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {

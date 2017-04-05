@@ -16,15 +16,12 @@
 
 CAN_HandleTypeDef can_handle;
 
-static uint8_t enabled; /*< Indicates if CAN interface in enabled. */
-
 /**
  * Initialize CAN interface.
  *
  * @return 0 if OK
  */
 uint8_t can_init() {
-    enabled = 0;
     return 0;
 }
 
@@ -59,18 +56,15 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     can_handle.Init.AWUM = DISABLE;
     can_handle.Init.NART = DISABLE;
     if (ctrlmode & USB_8DEV_MODE_ONESHOT) {
-        led_on(LED_RED);
         can_handle.Init.NART = ENABLE;
     }
     can_handle.Init.RFLM = DISABLE;
     can_handle.Init.TXFP = DISABLE;
     can_handle.Init.Mode = CAN_MODE_NORMAL;
     if (ctrlmode & USB_8DEV_CAN_MODE_SILENT) {
-        led_on(LED_RED);
         can_handle.Init.Mode |= CAN_MODE_SILENT;
     }
     if (ctrlmode & USB_8DEV_CAN_MODE_LOOPBACK) {
-        led_on(LED_RED);
         can_handle.Init.Mode |= CAN_MODE_LOOPBACK;
     }
     // The shift is needed because that's how CAN_SJW_xTQ,CAN_BS1_xTQ and
@@ -79,7 +73,7 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     can_handle.Init.BS1 = can_bittiming->ts1 << 4*4;
     can_handle.Init.BS2 = can_bittiming->ts2 << 5*4;
     can_handle.Init.Prescaler = can_bittiming->brp;
-    if (HAL_CAN_Init(&can_handle) != HAL_OK) {
+    if (HAL_CAN_Init(&can_handle)) {
         return 1;
     }
 
@@ -94,14 +88,21 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     sFilterConfig.FilterFIFOAssignment = CAN_FIFO0;
     sFilterConfig.FilterActivation = ENABLE;
     sFilterConfig.BankNumber = 14;
-    if (HAL_CAN_ConfigFilter(&can_handle, &sFilterConfig) != HAL_OK) {
+    if (HAL_CAN_ConfigFilter(&can_handle, &sFilterConfig)) {
         return 2;
     }
-    if (HAL_CAN_Receive_IT(&can_handle, CAN_FIFO0) != HAL_OK) {
+// Reason to not do it with interrupts is because when a CAN message
+// is received, RxCplt is called. In this function the CAN controller
+// is asked to receive a new packet. However if this function returns
+// non zero, when do you ask the controller to receive a new CAN packet? This
+// will happen because receive and send are different threads. You are only
+// allowed to call HAL from the main thread. See
+// https://community.st.com/thread/13989
+
+    if (HAL_CAN_Receive_IT(&can_handle, CAN_FIFO0)) {
         return 3;
     }
 
-    enabled = 1;
     return 0;
 }
 
@@ -109,9 +110,8 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
  * Close the CAN interface
  */
 uint8_t can_close() {
-    if (HAL_CAN_DeInit(&can_handle) != HAL_OK) {
+    if (HAL_CAN_DeInit(&can_handle)) {
         return 1;
     }
-    enabled = 0;
     return 0;
 }

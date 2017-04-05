@@ -16,7 +16,7 @@ SIZE = arm-none-eabi-size
 DEFS = -D$(CORE) -D$(TARGET_DEVICE) -DHSE_VALUE=$(HSE)
 
 # Compilation flags
-CFLAGS = -g -Os -pedantic -Wall -Wextra -Werror -mthumb -mcpu=$(CPU) $(DEFS)
+CFLAGS = -g -Os -std=c99 -pedantic -Wall -Wextra -Werror -mthumb -mcpu=$(CPU) $(DEFS)
 CFLAGSLIB = -g -Os -Wall -mthumb -mcpu=$(CPU) $(DEFS)
 LDFLAGS = -fno-exceptions -ffunction-sections -fdata-sections -Wl,--gc-sections
 LDFLAGS += -TSTM32F042x6xx_FLASH.ld
