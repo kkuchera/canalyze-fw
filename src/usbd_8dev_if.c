@@ -23,6 +23,7 @@
 #include "stm32f0xx_hal.h"
 #include "led.h"
 #include "can.h"
+#include "requests.h"
 
 #define FIRMWARE_VER    0x0010  /* bcd v0.1 */
 #define HARDWARE_VER    0x0010  /* bcd v0.1 */
@@ -137,75 +138,15 @@ USBD_8DEV_ItfTypeDef usbd_8dev_fops = {
     usbd_8dev_itf_rcv_data
 };
 
-static uint8_t usbd_8dev_itf_init(void) {
-    usbd_8dev_set_cmd_txbuf(&usbd_handle, (uint8_t*) &buf_cmdtx, sizeof(Msg_CmdTypeDef));
-    usbd_8dev_set_cmd_rxbuf(&usbd_handle, (uint8_t*)  &buf_cmdrx);
-    usbd_8dev_set_data_txbuf(&usbd_handle, (uint8_t*)  &buf_datatx, sizeof(Msg_TxTypeDef));
-    usbd_8dev_set_data_rxbuf(&usbd_handle, (uint8_t*)  &buf_datarx);
-    return (USBD_OK);
-}
-
-static uint8_t usbd_8dev_itf_deinit(void) {
-    can_close();
-    return (USBD_OK);
-}
-
-// buf == buf_cmdrx
-static uint8_t usbd_8dev_itf_rcv_cmd(uint8_t* buf, uint8_t *len) {
-    UNUSED(buf);
-    Can_BitTimingTypeDef can_bittiming;
-    if (*len == sizeof(buf_cmdrx) && buf_cmdrx.start == USB_8DEV_CMD_START && buf_cmdrx.end == USB_8DEV_CMD_END) {
-        buf_cmdtx.start = USB_8DEV_CMD_START;
-        buf_cmdtx.channel = buf_cmdrx.channel;
-        buf_cmdtx.command = buf_cmdrx.command;
-        buf_cmdtx.opt1 = buf_cmdrx.opt1;
-        buf_cmdtx.opt2 = buf_cmdrx.opt2;
-        buf_cmdtx.end = USB_8DEV_CMD_END;
-        switch (buf_cmdrx.command) {
-            case USB_8DEV_GET_SOFTW_HARDW_VER:
-                buf_cmdtx.data[0] = (FIRMWARE_VER & 0xff00) >> 8; // major
-                buf_cmdtx.data[1] = (FIRMWARE_VER & 0x00f0) >> 4; // minor
-                buf_cmdtx.data[2] = (HARDWARE_VER & 0xff00) >> 8; // major
-                buf_cmdtx.data[3] = (HARDWARE_VER & 0x00f0) >> 4; // minor
-                buf_cmdtx.opt1 = USB_8DEV_CMD_SUCCESS;
-                break;
-            case USB_8DEV_OPEN:
-                // TODO check that data is valid
-                can_bittiming.ts1 = buf_cmdrx.data[0] - 1;
-                can_bittiming.ts2 = buf_cmdrx.data[1] - 1;
-                can_bittiming.sjw = buf_cmdrx.data[2] - 1;
-                can_bittiming.brp = (buf_cmdrx.data[3] << 8) | buf_cmdrx.data[4];
-                can_bittiming.brp *= TQ_SCALE;
-                /*  Ctrl mode is be32 stored in data[5]..data[8], only 1 byte
-                 *  is used. If multiple bytes are used, ctrlmode =
-                 *  bswap((uint32_t) data[5]..data[8])
-                 */
-                if (can_open(&can_bittiming, buf_cmdrx.data[8])) {
-                    buf_cmdtx.opt1 = USB_8DEV_CMD_ERROR;
-                } else {
-                    buf_cmdtx.opt1 = USB_8DEV_CMD_SUCCESS;
-                }
-                break;
-            case USB_8DEV_CLOSE:
-                if (can_close()) {
-                    buf_cmdtx.opt1 = USB_8DEV_CMD_ERROR;
-                } else {
-                    buf_cmdtx.opt1 = USB_8DEV_CMD_SUCCESS;
-                }
-                break;
-            default:
-                Error_Handler();
-        }
-        if (usbd_8dev_transmit_cmd_packet(&usbd_handle) != USBD_OK) {
-            Error_Handler();
-        }
-    } else {
+void usbd_8dev_send_cmd_rsp(uint8_t error) {
+    UNUSED(error);
+    buf_cmdtx.opt1 = error ? USB_8DEV_CMD_ERROR : USB_8DEV_CMD_SUCCESS;
+    if (usbd_8dev_transmit_cmd_packet(&usbd_handle)) {
         Error_Handler();
     }
-    if (usbd_8dev_receive_cmd_packet(&usbd_handle) != USBD_OK) {
+    if (usbd_8dev_receive_cmd_packet(&usbd_handle)) {
         Error_Handler();
     }
-    return USBD_OK;
 }
 
 uint8_t usbd_8dev_transmit(CanRxMsgTypeDef *buf_canrx) {
@@ -229,20 +170,66 @@ uint8_t usbd_8dev_transmit(CanRxMsgTypeDef *buf_canrx) {
     return usbd_8dev_transmit_data_packet(&usbd_handle);
 }
 
-void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef *hcan) {
-    //TODO occasionally transmit will return USBD_BUSY and message is not
-    //transmitted. Should retry transmission. Possible solution: Use a buffer
-    //for messages to be transmitted over USB.
-    if (usbd_8dev_transmit(hcan->pRxMsg) == USBD_FAIL) {
+uint8_t usbd_8dev_receive() {
+    return usbd_8dev_receive_data_packet(&usbd_handle);
+}
+
+static uint8_t usbd_8dev_itf_init(void) {
+    usbd_8dev_set_cmd_txbuf(&usbd_handle, (uint8_t*) &buf_cmdtx, sizeof(Msg_CmdTypeDef));
+    usbd_8dev_set_cmd_rxbuf(&usbd_handle, (uint8_t*)  &buf_cmdrx);
+    usbd_8dev_set_data_txbuf(&usbd_handle, (uint8_t*)  &buf_datatx, sizeof(Msg_TxTypeDef));
+    usbd_8dev_set_data_rxbuf(&usbd_handle, (uint8_t*)  &buf_datarx);
+    return (USBD_OK);
+}
+
+static uint8_t usbd_8dev_itf_deinit(void) {
+    requests |= REQ_CAN_CLOSE;
+    return (USBD_OK);
+}
+
+// buf == buf_cmdrx
+static uint8_t usbd_8dev_itf_rcv_cmd(uint8_t* buf, uint8_t *len) {
+    UNUSED(buf);
+    Can_BitTimingTypeDef can_bittiming;
+    if (*len == sizeof(buf_cmdrx) && buf_cmdrx.start == USB_8DEV_CMD_START && buf_cmdrx.end == USB_8DEV_CMD_END) {
+        buf_cmdtx.start = USB_8DEV_CMD_START;
+        buf_cmdtx.channel = buf_cmdrx.channel;
+        buf_cmdtx.command = buf_cmdrx.command;
+        buf_cmdtx.opt1 = buf_cmdrx.opt1;
+        buf_cmdtx.opt2 = buf_cmdrx.opt2;
+        buf_cmdtx.end = USB_8DEV_CMD_END;
+        switch (buf_cmdrx.command) {
+            case USB_8DEV_GET_SOFTW_HARDW_VER:
+                buf_cmdtx.data[0] = (FIRMWARE_VER & 0xff00) >> 8; // major
+                buf_cmdtx.data[1] = (FIRMWARE_VER & 0x00f0) >> 4; // minor
+                buf_cmdtx.data[2] = (HARDWARE_VER & 0xff00) >> 8; // major
+                buf_cmdtx.data[3] = (HARDWARE_VER & 0x00f0) >> 4; // minor
+                buf_cmdtx.opt1 = USB_8DEV_CMD_SUCCESS;
+                requests |= REQ_VER;
+                break;
+            case USB_8DEV_OPEN:
+                can_bittiming.ts1 = buf_cmdrx.data[0] - 1;
+                can_bittiming.ts2 = buf_cmdrx.data[1] - 1;
+                can_bittiming.sjw = buf_cmdrx.data[2] - 1;
+                can_bittiming.brp = (buf_cmdrx.data[3] << 8) | buf_cmdrx.data[4];
+                can_bittiming.brp *= TQ_SCALE;
+                /*  Ctrl mode is be32 stored in data[5]..data[8], only 1 byte
+                 *  is used. If multiple bytes are used, ctrlmode =
+                 *  bswap((uint32_t) data[5]..data[8])
+                 */
+                can_open_req(&can_bittiming, buf_cmdrx.data[8]);
+                requests |= REQ_CAN_OPEN;
+                break;
+            case USB_8DEV_CLOSE:
+                requests |= REQ_CAN_CLOSE;
+                break;
+            default:
+                Error_Handler();
+        }
+    } else {
         Error_Handler();
     }
-    //TODO occasionally receive will return HAL_BUSY and message is not
-    //received. This should be solved, perhaps by removing HAL dependency.
-    if (HAL_CAN_Receive_IT(hcan, CAN_FIFO0)) {
-	//Try to receive again if this fails, otherwise CAN packets won't ever
-	//be received again.
-	//Error_Handler();
-    }
+    return USBD_OK;
 }
 
 // buf == buf_datarx
@@ -262,12 +249,7 @@ static uint8_t usbd_8dev_itf_rcv_data(uint8_t* buf, uint8_t *len) {
         for (i=0; i<buf_datarx.dlc; i++) {
             can_handle.pTxMsg->Data[i] = buf_datarx.data[i];
         }
-        if (HAL_CAN_Transmit(&can_handle, 10)){
-            //Error_Handler();
-        }
-        if (usbd_8dev_receive_data_packet(&usbd_handle)) {
-            Error_Handler();
-        }
+        requests |= REQ_CAN_TX;
     } else {
         Error_Handler();
     }

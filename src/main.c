@@ -1,5 +1,27 @@
+/**
+ * @file main.c
+ *
+ * Main program
+ *
+ * The general structure of the program is that interrupt handlers set a flag
+ * @see requests.h indicating a request. The main program then checks what has
+ * been requested and handles it. For example, when a command to open CAN is
+ * received over USB, the interrupt handler sets a flag REQ_CAN_OPEN indicating
+ * that the CAN should be started. The main loop then checks these flags, sees
+ * a request that CAN should be opened, and opens CAN. There are multiple
+ * advantages to this approach.
+ *  1. Keeps interrupt service routines short.
+ *  2. Clarity since the workings of the whole program are in the main loop as
+ *  opposed to being scattered around different interrupt service routines.
+ *  3. The main thread schedules when to handle a request instead of each ISR
+ *  living a life of their own.  
+ * Aside from these advantages, there really isn't any other choice since HAL
+ * functions can only be called from the main thread since HAL can be locked
+ * otherwise.
+ */
 #include "can.h"
 #include "led.h"
+#include "requests.h"
 #include "stm32f0xx.h"
 #include "usbd.h"
 #include "usbd_8dev_if.h"
@@ -54,6 +76,10 @@ void clock_init() {
     //NVIC_SetPriority(SysTick_IRQn, 0);
 }
 
+static void Error_Handler(void) {
+    led_on(LED_RED);
+}
+
 /**
  * Monitors CAN traffic and relays it to USB interface and vise versa.
  *
@@ -68,6 +94,38 @@ int main(void) {
 
     led_on(LED_GREEN);
 
+    requests = 0;
+    //TODO 1) make all calls on main thread non blocking, 2) handle CAN errors
     while (1) {
+        if (requests & REQ_VER) {
+            usbd_8dev_send_cmd_rsp(0);
+            requests &= ~REQ_VER;
+        }
+        if (requests & REQ_CAN_OPEN) {
+            usbd_8dev_send_cmd_rsp(can_open());
+            requests &= ~REQ_CAN_OPEN;
+        }
+        if (requests & REQ_CAN_CLOSE) {
+            usbd_8dev_send_cmd_rsp(can_close());
+            requests &= ~REQ_CAN_CLOSE;
+        }
+        if (requests & REQ_CAN_TX) {
+            if (HAL_CAN_Transmit(&can_handle, 100) == HAL_ERROR) {
+                //TODO Maybe add buffer or cancel pending?
+                Error_Handler();
+            }
+            if (usbd_8dev_receive()) {
+                Error_Handler();
+            }
+            requests &= ~REQ_CAN_TX;
+        }
+        if (can_msg_pending()) {
+            if (HAL_CAN_Receive(&can_handle, CAN_FIFO0, 3)) {
+                Error_Handler();
+            }
+            if (usbd_8dev_transmit(can_handle.pRxMsg) == USBD_FAIL) {
+                Error_Handler();
+            }
+        }
     }
 }

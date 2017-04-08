@@ -1,6 +1,7 @@
 #include "can.h"
 #include "led.h"
 #include "stm32f0xx_hal.h"
+
 // CAN control modes
 //#define CAN_CTRLMODE_NORMAL             0x00
 #define USB_8DEV_CAN_MODE_SILENT        0x01
@@ -16,25 +17,30 @@
 
 CAN_HandleTypeDef can_handle;
 
+static uint8_t enabled; /*< Indicates if CAN interface in enabled. */
+static CAN_FilterConfTypeDef sFilterConfig;
+
 /**
  * Initialize CAN interface.
  *
  * @return 0 if OK
  */
 uint8_t can_init() {
+    enabled = 0;
     return 0;
 }
 
 /**
- * Open the CAN interface.
+ * Request to open the CAN interface.
  *
- * Starts monitoring the can interface and sends the data over USB.
+ * Set up a request and corresponding initialization data to start the CAN
+ * interface.
  *
  * @param can_bittiming CAN bit timings to configure CAN.
  * @param ctrlmode flag setting CAN control modes e.g. @see
  * USB_8DEV_CAN_MODE_SILENT
  */
-uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
+void can_open_req(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     /* See datasheet p836 on bit timings for SJW, BS1 and BS2
      * tq = (BRP+1).tpclk
      * tsjw = tq.(SJW+1)
@@ -42,7 +48,6 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
      * tbs2 = tq.(TS2+1)
      * baud = 1/(tsjw+tbs1+tbs2) = 1/(tq.((SJW+1)+(TS1+1)+(TS2+1)))
      */
-    CAN_FilterConfTypeDef sFilterConfig;
     static CanTxMsgTypeDef TxMessage;
     static CanRxMsgTypeDef RxMessage;
 
@@ -73,9 +78,6 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     can_handle.Init.BS1 = can_bittiming->ts1 << 4*4;
     can_handle.Init.BS2 = can_bittiming->ts2 << 5*4;
     can_handle.Init.Prescaler = can_bittiming->brp;
-    if (HAL_CAN_Init(&can_handle)) {
-        return 1;
-    }
 
     // Configure the CAN Filter, needed to receive CAN data
     sFilterConfig.FilterNumber = 0;
@@ -88,21 +90,26 @@ uint8_t can_open(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode) {
     sFilterConfig.FilterFIFOAssignment = CAN_FIFO0;
     sFilterConfig.FilterActivation = ENABLE;
     sFilterConfig.BankNumber = 14;
+}
+
+/**
+ * Open the CAN interface.
+ *
+ * Initialize and configure the filters for the CAN interface.
+ *
+ * @return 0 if OK
+ */
+uint8_t can_open() {
+    if (HAL_CAN_Init(&can_handle)) {
+        return 1;
+    }
     if (HAL_CAN_ConfigFilter(&can_handle, &sFilterConfig)) {
         return 2;
     }
-// Reason to not do it with interrupts is because when a CAN message
-// is received, RxCplt is called. In this function the CAN controller
-// is asked to receive a new packet. However if this function returns
-// non zero, when do you ask the controller to receive a new CAN packet? This
-// will happen because receive and send are different threads. You are only
-// allowed to call HAL from the main thread. See
-// https://community.st.com/thread/13989
-
-    if (HAL_CAN_Receive_IT(&can_handle, CAN_FIFO0)) {
-        return 3;
-    }
-
+    /*if (HAL_CAN_Receive_IT(&can_handle, CAN_FIFO0)) {*/
+        /*return 3;*/
+    /*}*/
+    enabled = 1;
     return 0;
 }
 
@@ -113,5 +120,14 @@ uint8_t can_close() {
     if (HAL_CAN_DeInit(&can_handle)) {
         return 1;
     }
+    enabled = 0;
     return 0;
+}
+
+uint8_t can_msg_pending() {
+    if (!enabled) {
+        return 0;
+    } else {
+        return __HAL_CAN_MSG_PENDING(&can_handle, CAN_FIFO0);
+    }
 }
