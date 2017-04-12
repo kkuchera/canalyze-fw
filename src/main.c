@@ -14,10 +14,17 @@
  *  2. Clarity since the workings of the whole program are in the main loop as
  *  opposed to being scattered around different interrupt service routines.
  *  3. The main thread schedules when to handle a request instead of each ISR
- *  living a life of their own.  
+ *  living a life of its own.
  * Aside from these advantages, there really isn't any other choice since HAL
  * functions can only be called from the main thread since HAL can be locked
  * otherwise.
+ *
+ * Since FS USB (12Mbit/s) is a lot faster than CAN (max 1Mbit/s), data can be
+ * sent to the host over USB at any time. Data can only be received over USB
+ * when the previous packet has been handled. This is to prevent the device
+ * from being flooded with incoming data. In addition, this guarantees that CAN
+ * and USB data won't be corrupted since it will only receive new data once the
+ * previous data has been handled.
  */
 #include "can.h"
 #include "led.h"
@@ -76,10 +83,6 @@ void clock_init() {
     //NVIC_SetPriority(SysTick_IRQn, 0);
 }
 
-static void Error_Handler(void) {
-    led_on(LED_RED);
-}
-
 /**
  * Monitors CAN traffic and relays it to USB interface and vise versa.
  *
@@ -110,21 +113,25 @@ int main(void) {
             requests &= ~REQ_CAN_CLOSE;
         }
         if (requests & REQ_CAN_TX) {
-            if (HAL_CAN_Transmit(&can_handle, 100) == HAL_ERROR) {
-                //TODO Maybe add buffer or cancel pending?
-                Error_Handler();
+            if (can_tx(10)) {
+                // Will occur when there is a timeout or there are still
+                // pending messages from last attempt
+                // TODO Maybe add buffer or cancel pending when timeout or
+                // error occurs?
+                //led_on(LED_RED);
             }
-            if (usbd_8dev_receive()) {
-                Error_Handler();
-            }
+            usbd_8dev_receive();
             requests &= ~REQ_CAN_TX;
         }
+        if (requests & REQ_CAN_ERR) {
+            usbd_8dev_transmit_can_error();
+            requests &= ~REQ_CAN_ERR;
+        }
         if (can_msg_pending()) {
-            if (HAL_CAN_Receive(&can_handle, CAN_FIFO0, 3)) {
-                Error_Handler();
-            }
-            if (usbd_8dev_transmit(can_handle.pRxMsg) == USBD_FAIL) {
-                Error_Handler();
+            if (can_rx(3)) {
+                led_on(LED_RED);
+            } else {
+                usbd_8dev_transmit_can_frame();
             }
         }
     }

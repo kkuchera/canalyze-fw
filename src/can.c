@@ -20,6 +20,9 @@ CAN_HandleTypeDef can_handle;
 static uint8_t enabled; /*< Indicates if CAN interface in enabled. */
 static CAN_FilterConfTypeDef sFilterConfig;
 
+static void can_interrupts_enable();
+static void can_interrupts_disable();
+
 /**
  * Initialize CAN interface.
  *
@@ -109,6 +112,7 @@ uint8_t can_open() {
     /*if (HAL_CAN_Receive_IT(&can_handle, CAN_FIFO0)) {*/
         /*return 3;*/
     /*}*/
+    can_interrupts_enable();
     enabled = 1;
     return 0;
 }
@@ -117,6 +121,7 @@ uint8_t can_open() {
  * Close the CAN interface
  */
 uint8_t can_close() {
+    can_interrupts_disable();
     if (HAL_CAN_DeInit(&can_handle)) {
         return 1;
     }
@@ -124,10 +129,80 @@ uint8_t can_close() {
     return 0;
 }
 
+/**
+ * Transmit data over CAN.
+ *
+ * @param[in] timeout Time in ms to attempt transmit.
+ * @return 0 if success
+ */
+uint8_t can_tx(uint32_t timeout) {
+    // If a timeout occurs, the CAN frame is already in the transmit mailbox
+    // and the CAN controller will still attempt to send it even after the
+    // timeout
+    //occurs.
+    return HAL_CAN_Transmit(&can_handle, timeout);
+}
+
+/**
+ * Receive data over CAN.
+ *
+ * @param[in] timeout Time in ms to attempt receive.
+ * @return 0 if success
+ */
+uint8_t can_rx(uint32_t timeout) {
+    return HAL_CAN_Receive(&can_handle, CAN_FIFO0, timeout);
+}
+
+/**
+ * Check if there are CAN messages pending in receive FIFO.
+ *
+ * @return Number of messages pending.
+ */
 uint8_t can_msg_pending() {
     if (!enabled) {
         return 0;
     } else {
         return __HAL_CAN_MSG_PENDING(&can_handle, CAN_FIFO0);
     }
+}
+
+static void can_interrupts_enable() {
+    /* Enable FIFO0 overrun interrupt */
+    // TODO not easily handled by HAL
+    //__HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_FOV0);
+
+    /* Enable error warning interrupt */
+    __HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_EWG);
+
+    /* Enable error passive interrupt */
+    __HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_EPV);
+
+    /* Enable bus-off interrupt */
+    __HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_BOF);
+
+    /* Enable last error code interrupt */
+    __HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_LEC);
+
+    /* Enable error interrupt */
+    __HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_ERR);
+}
+
+static void can_interrupts_disable() {
+    /* Disable FIFO0 overrun interrupt */
+    //__HAL_CAN_ENABLE_IT(&can_handle, CAN_IT_FOV0);
+
+    /* Disable error warning interrupt */
+    __HAL_CAN_DISABLE_IT(&can_handle, CAN_IT_EWG);
+
+    /* Disable error passive interrupt */
+    __HAL_CAN_DISABLE_IT(&can_handle, CAN_IT_EPV);
+
+    /* Disable bus-off interrupt */
+    __HAL_CAN_DISABLE_IT(&can_handle, CAN_IT_BOF);
+
+    /* Disable last error code interrupt */
+    __HAL_CAN_DISABLE_IT(&can_handle, CAN_IT_LEC);
+
+    /* Disable error interrupt */
+    __HAL_CAN_DISABLE_IT(&can_handle, CAN_IT_ERR);
 }

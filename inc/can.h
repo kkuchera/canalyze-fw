@@ -43,6 +43,8 @@ uint8_t can_init();
 void can_open_req(Can_BitTimingTypeDef* can_bittiming, uint8_t ctrlmode);
 uint8_t can_open();
 uint8_t can_close();
+uint8_t can_tx();
+uint8_t can_rx();
 uint8_t can_msg_pending();
 
 #endif

@@ -19,6 +19,7 @@
  *  format and mostly consists of a CAN frame and starts/stops once open/close
  *  command is called respectively.
  */
+#include <string.h>
 #include "usbd_8dev_if.h"
 #include "stm32f0xx_hal.h"
 #include "led.h"
@@ -48,17 +49,17 @@
 #define USB_8DEV_RTR            0x02
 #define USB_8DEV_ERR            0x04
 
-#define USB_8DEV_ERROR_OK       0x00
-//#define USB_8DEV_ERROR_OVERRUN  0x01
-#define USB_8DEV_ERROR_EWG      0x02
-#define USB_8DEV_ERROR_EPV      0x03
-#define USB_8DEV_ERROR_BOF      0x04
-#define USB_8DEV_ERROR_STF      0x20
-#define USB_8DEV_ERROR_FOR      0x21
-#define USB_8DEV_ERROR_ACK      0x23
-#define USB_8DEV_ERROR_BR       0x24
-#define USB_8DEV_ERROR_BD       0x25
-#define USB_8DEV_ERROR_CRC      0x27
+#define USB_8DEV_ERROR_OK       0x00    // no error
+#define USB_8DEV_ERROR_FOV      0x01    // rx error
+#define USB_8DEV_ERROR_EWG      0x02    // TEC or REC >= 96
+#define USB_8DEV_ERROR_EPV      0x03    // TEC or REC >= 127
+#define USB_8DEV_ERROR_BOF      0x04    // TEC > 255
+#define USB_8DEV_ERROR_STF      0x20    // rx error
+#define USB_8DEV_ERROR_FOR      0x21    // rx error
+#define USB_8DEV_ERROR_ACK      0x23    // tx error
+#define USB_8DEV_ERROR_BR       0x24    // tx error
+#define USB_8DEV_ERROR_BD       0x25    // tx error
+#define USB_8DEV_ERROR_CRC      0x27    // rx error
 #define USB_8DEV_ERROR_UNK      0xff
 
 // Needed because 8dev works at 32MHz, and this device at 48MHz
@@ -112,6 +113,8 @@ typedef struct __packed usb_8dev_cmd_msg {
     uint8_t end;         // end of message byte
 } Msg_CmdTypeDef;
 
+static volatile uint8_t usb_8dev_error; /*< Last USB 8dev CAN error. */
+
 Msg_TxTypeDef buf_datatx;// = {USB_8DEV_CMD_START, 0, 0, 0, 0, {0}, 0, USB_8DEV_CMD_END};
 Msg_RxTypeDef buf_datarx;
 Msg_CmdTypeDef buf_cmdtx;// = {USB_8DEV_CMD_START, 0, 0, 0, 0, {0}, USB_8DEV_CMD_END};
@@ -138,8 +141,12 @@ USBD_8DEV_ItfTypeDef usbd_8dev_fops = {
     usbd_8dev_itf_rcv_data
 };
 
+/**
+ * Send response of a command over USB to host.
+ *
+ * @param[in] error code
+ */
 void usbd_8dev_send_cmd_rsp(uint8_t error) {
-    UNUSED(error);
     buf_cmdtx.opt1 = error ? USB_8DEV_CMD_ERROR : USB_8DEV_CMD_SUCCESS;
     if (usbd_8dev_transmit_cmd_packet(&usbd_handle)) {
         Error_Handler();
@@ -149,8 +156,13 @@ void usbd_8dev_send_cmd_rsp(uint8_t error) {
     }
 }
 
-uint8_t usbd_8dev_transmit(CanRxMsgTypeDef *buf_canrx) {
-    uint8_t i;
+/**
+ * Transmit a CAN frame over USB to host.
+ */
+void usbd_8dev_transmit_can_frame() {
+    CanRxMsgTypeDef *buf_canrx = can_handle.pRxMsg;
+    char *tmp_ptr = (char *) buf_canrx->Data;
+     // See http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.faqs/ka3934.html
     buf_datatx.start = USB_8DEV_DATA_START;
     buf_datatx.type = USB_8DEV_TYPE_CAN_FRAME;
     buf_datatx.flags = 0; // Default is STD ID.
@@ -162,16 +174,40 @@ uint8_t usbd_8dev_transmit(CanRxMsgTypeDef *buf_canrx) {
     }
     if (buf_canrx->RTR) buf_datatx.flags |= USB_8DEV_RTR;
     buf_datatx.dlc = buf_canrx->DLC;
-    for (i=0; i<buf_canrx->DLC; i++) {
-        buf_datatx.data[i] = buf_canrx->Data[i];
-    }
+    memcpy(buf_datatx.data, tmp_ptr, buf_canrx->DLC);
     buf_datatx.timestamp = HAL_GetTick();
     buf_datatx.end = USB_8DEV_DATA_END;
-    return usbd_8dev_transmit_data_packet(&usbd_handle);
+    // TODO sometimes USBD is busy due to the previous transmit not being
+    // completed yet. This could be solved using a buffer for all USB tx data
+    // (CAN frames and CAN errors) or a blocking transmit.
+    if (usbd_8dev_transmit_data_packet(&usbd_handle)) {
+        //Error_Handler();
+    }
 }
 
-uint8_t usbd_8dev_receive() {
-    return usbd_8dev_receive_data_packet(&usbd_handle);
+/**
+ * Transmit a CAN error over USB to host.
+ */
+void usbd_8dev_transmit_can_error() {
+    buf_datatx.start = USB_8DEV_DATA_START;
+    buf_datatx.type = USB_8DEV_TYPE_ERROR_FRAME;
+    buf_datatx.flags = USB_8DEV_ERR;
+    buf_datatx.end = USB_8DEV_DATA_END;
+
+    buf_datatx.data[0] = usb_8dev_error;
+    // TODO see usbd_8dev_transmit()'s comment
+    if (usbd_8dev_transmit_data_packet(&usbd_handle)) {
+        //Error_Handler();
+    }
+}
+
+/**
+ * Allow for new data from USB to be received.
+ */
+void usbd_8dev_receive() {
+    if (usbd_8dev_receive_data_packet(&usbd_handle)) {
+        Error_Handler();
+    }
 }
 
 static uint8_t usbd_8dev_itf_init(void) {
@@ -179,12 +215,12 @@ static uint8_t usbd_8dev_itf_init(void) {
     usbd_8dev_set_cmd_rxbuf(&usbd_handle, (uint8_t*)  &buf_cmdrx);
     usbd_8dev_set_data_txbuf(&usbd_handle, (uint8_t*)  &buf_datatx, sizeof(Msg_TxTypeDef));
     usbd_8dev_set_data_rxbuf(&usbd_handle, (uint8_t*)  &buf_datarx);
-    return (USBD_OK);
+    return USBD_OK;
 }
 
 static uint8_t usbd_8dev_itf_deinit(void) {
     requests |= REQ_CAN_CLOSE;
-    return (USBD_OK);
+    return USBD_OK;
 }
 
 // buf == buf_cmdrx
@@ -235,98 +271,91 @@ static uint8_t usbd_8dev_itf_rcv_cmd(uint8_t* buf, uint8_t *len) {
 // buf == buf_datarx
 static uint8_t usbd_8dev_itf_rcv_data(uint8_t* buf, uint8_t *len) {
     UNUSED(buf);
-    uint8_t i;
+    CanTxMsgTypeDef *buf_cantx = can_handle.pTxMsg;
+    char *tmp_ptr = (char *) buf_datarx.data;
     if (*len == sizeof(buf_datarx) && buf_datarx.start == USB_8DEV_DATA_START && buf_datarx.end == USB_8DEV_DATA_END) {
         // Extended frame format
         if (buf_datarx.flags & USB_8DEV_EXTID) {
-            can_handle.pTxMsg->IDE = CAN_ID_EXT;
-            can_handle.pTxMsg->ExtId = __builtin_bswap32(buf_datarx.id) & 0x1fffffff;
+            buf_cantx->IDE = CAN_ID_EXT;
+            buf_cantx->ExtId = __builtin_bswap32(buf_datarx.id) & 0x1fffffff;
         } else { // Base frame format
-            can_handle.pTxMsg->IDE = CAN_ID_STD;
-            can_handle.pTxMsg->StdId = __builtin_bswap32(buf_datarx.id) & 0x00007ff;
+            buf_cantx->IDE = CAN_ID_STD;
+            buf_cantx->StdId = __builtin_bswap32(buf_datarx.id) & 0x00007ff;
         }
-        can_handle.pTxMsg->DLC = buf_datarx.dlc;
-        for (i=0; i<buf_datarx.dlc; i++) {
-            can_handle.pTxMsg->Data[i] = buf_datarx.data[i];
-        }
+        buf_cantx->DLC = buf_datarx.dlc;
+        memcpy(buf_cantx->Data, tmp_ptr, buf_datarx.dlc);
         requests |= REQ_CAN_TX;
     } else {
         Error_Handler();
     }
-    return (USBD_OK);
+    return USBD_OK;
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {
+    uint32_t errorcode = hcan->ErrorCode;
     /* Multiple errors can happen simultaneously but there is no way to report
      * this to the device driver. */
-    buf_datatx.start = USB_8DEV_DATA_START;
-    buf_datatx.type = USB_8DEV_TYPE_ERROR_FRAME;
-    buf_datatx.flags = USB_8DEV_ERR;
-    buf_datatx.end = USB_8DEV_DATA_END;
-    // hcan->ErrorCode is a flag. Can contain multiple errors.
-#if 0
-    if (hcan->ErrorCode & HAL_CAN_ERROR_NONE) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_OK;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_EWG) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_EWG;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_EPV) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_EPV;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_BOF) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_BOF;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_STF) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_STF;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_FOR) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_FOR;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_ACK) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_ACK;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_BR) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_BR;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_BD) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_BD;
-    } else if (hcan->ErrorCode & HAL_CAN_ERROR_CRC) {
-            buf_datatx.data[0] = USB_8DEV_ERROR_CRC;
-    } else {
-            buf_datatx.data[0] = USB_8DEV_ERROR_UNK;
+#if 1
+    if (errorcode & HAL_CAN_ERROR_NONE) {
+        usb_8dev_error = USB_8DEV_ERROR_OK;
+    } else if (errorcode & HAL_CAN_ERROR_BOF) {
+        usb_8dev_error = USB_8DEV_ERROR_BOF;
+    } else if (errorcode & HAL_CAN_ERROR_EPV) {
+        usb_8dev_error = USB_8DEV_ERROR_EPV;
+    } else if (errorcode & HAL_CAN_ERROR_EWG) {
+        usb_8dev_error = USB_8DEV_ERROR_EWG;
+    } else if (errorcode & HAL_CAN_ERROR_STF) {
+        usb_8dev_error = USB_8DEV_ERROR_STF;
+    } else if (errorcode & HAL_CAN_ERROR_FOR) {
+        usb_8dev_error = USB_8DEV_ERROR_FOR;
+    } else if (errorcode & HAL_CAN_ERROR_ACK) {
+        usb_8dev_error = USB_8DEV_ERROR_ACK;
+    } else if (errorcode & HAL_CAN_ERROR_BR) {
+        usb_8dev_error = USB_8DEV_ERROR_BR;
+    } else if (errorcode & HAL_CAN_ERROR_BD) {
+        usb_8dev_error = USB_8DEV_ERROR_BD;
+    } else if (errorcode & HAL_CAN_ERROR_CRC) {
+        usb_8dev_error = USB_8DEV_ERROR_CRC;
     }
 #else
-    switch (hcan->ErrorCode) {
+    switch (errorcode) {
         case HAL_CAN_ERROR_NONE:
-            buf_datatx.data[0] = USB_8DEV_ERROR_OK;
+            usb_8dev_error = USB_8DEV_ERROR_OK;
             break;
         case HAL_CAN_ERROR_EWG:
-            buf_datatx.data[0] = USB_8DEV_ERROR_EWG;
+            usb_8dev_error = USB_8DEV_ERROR_EWG;
             break;
         case HAL_CAN_ERROR_EPV:
-            buf_datatx.data[0] = USB_8DEV_ERROR_EPV;
+            usb_8dev_error = USB_8DEV_ERROR_EPV;
             break;
         case HAL_CAN_ERROR_BOF:
-            buf_datatx.data[0] = USB_8DEV_ERROR_BOF;
+            usb_8dev_error = USB_8DEV_ERROR_BOF;
             break;
         case HAL_CAN_ERROR_STF:
-            buf_datatx.data[0] = USB_8DEV_ERROR_STF;
+            usb_8dev_error = USB_8DEV_ERROR_STF;
             break;
         case HAL_CAN_ERROR_FOR:
-            buf_datatx.data[0] = USB_8DEV_ERROR_FOR;
+            usb_8dev_error = USB_8DEV_ERROR_FOR;
             break;
         case HAL_CAN_ERROR_ACK:
-            buf_datatx.data[0] = USB_8DEV_ERROR_ACK;
+            usb_8dev_error = USB_8DEV_ERROR_ACK;
             break;
         case HAL_CAN_ERROR_BR:
-            buf_datatx.data[0] = USB_8DEV_ERROR_BR;
+            usb_8dev_error = USB_8DEV_ERROR_BR;
             break;
         case HAL_CAN_ERROR_BD:
-            buf_datatx.data[0] = USB_8DEV_ERROR_BD;
+            usb_8dev_error = USB_8DEV_ERROR_BD;
             break;
         case HAL_CAN_ERROR_CRC:
-            buf_datatx.data[0] = USB_8DEV_ERROR_CRC;
+            usb_8dev_error = USB_8DEV_ERROR_CRC;
             break;
         default:
             // Occurs when multiple errors happen simultaneously
-            //buf_datatx.data[0] = USB_8DEV_ERROR_UNK;
-            buf_datatx.data[0] = hcan->ErrorCode;
+            //usb_8dev_error = USB_8DEV_ERROR_UNK;
+            usb_8dev_error = errorcode;
     }
 #endif
-    usbd_8dev_transmit_data_packet(&usbd_handle);
+    requests |= REQ_CAN_ERR;
 }
 
 static void Error_Handler(void) {

@@ -6,7 +6,8 @@
 extern USBD_8DEV_ItfTypeDef usbd_8dev_fops;
 
 void usbd_8dev_send_cmd_rsp(uint8_t error);
-uint8_t usbd_8dev_transmit(CanRxMsgTypeDef *buf_canrx);
-uint8_t usbd_8dev_receive();
+void usbd_8dev_transmit_can_frame();
+void usbd_8dev_transmit_can_error();
+void usbd_8dev_receive();
 
 #endif
