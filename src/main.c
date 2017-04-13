@@ -78,9 +78,9 @@ void clock_init() {
     // Set the USB clock source to PLL
     RCC->CFGR3 = (RCC->CFGR3 & (~RCC_CFGR3_USBSW)) | (RCC_CFGR3_USBSW_PLLCLK);
 
-    // Set systick to 1ms (HCLK = PLL = 48MHz), done in HAL_Init();
-    //SysTick_Config(48000000/1000);
-    //NVIC_SetPriority(SysTick_IRQn, 0);
+    // Set systick to 1ms (HCLK = PLL = 48MHz)
+    SysTick_Config(48000000/1000);
+    NVIC_SetPriority(SysTick_IRQn, 0);
 }
 
 /**
@@ -95,7 +95,7 @@ int main(void) {
     can_init();
     led_init();
 
-    led_on(LED_GREEN);
+    led_blink(LED_GREEN);
 
     requests = 0;
     //TODO 1) make all calls on main thread non blocking, 2) handle CAN errors
@@ -106,10 +106,14 @@ int main(void) {
         }
         if (requests & REQ_CAN_OPEN) {
             usbd_8dev_send_cmd_rsp(can_open());
+            led_on(LED_GREEN);
+            led_off(LED_RED);
             requests &= ~REQ_CAN_OPEN;
         }
         if (requests & REQ_CAN_CLOSE) {
             usbd_8dev_send_cmd_rsp(can_close());
+            led_blink(LED_GREEN);
+            led_off(LED_RED);
             requests &= ~REQ_CAN_CLOSE;
         }
         if (requests & REQ_CAN_TX) {

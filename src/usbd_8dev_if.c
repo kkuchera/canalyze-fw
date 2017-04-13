@@ -127,7 +127,7 @@ static uint8_t usbd_8dev_itf_deinit(void);
 static uint8_t usbd_8dev_itf_rcv_cmd(uint8_t* pbuf, uint8_t *len);
 static uint8_t usbd_8dev_itf_rcv_data(uint8_t* pbuf, uint8_t *len);
 
-static void Error_Handler(void);
+static void error_handler(void);
 
 /**
  * USB 8dev class callbacks.
@@ -149,10 +149,10 @@ USBD_8DEV_ItfTypeDef usbd_8dev_fops = {
 void usbd_8dev_send_cmd_rsp(uint8_t error) {
     buf_cmdtx.opt1 = error ? USB_8DEV_CMD_ERROR : USB_8DEV_CMD_SUCCESS;
     if (usbd_8dev_transmit_cmd_packet(&usbd_handle)) {
-        Error_Handler();
+        error_handler();
     }
     if (usbd_8dev_receive_cmd_packet(&usbd_handle)) {
-        Error_Handler();
+        error_handler();
     }
 }
 
@@ -181,7 +181,7 @@ void usbd_8dev_transmit_can_frame() {
     // completed yet. This could be solved using a buffer for all USB tx data
     // (CAN frames and CAN errors) or a blocking transmit.
     if (usbd_8dev_transmit_data_packet(&usbd_handle)) {
-        //Error_Handler();
+        //error_handler();
     }
 }
 
@@ -197,7 +197,12 @@ void usbd_8dev_transmit_can_error() {
     buf_datatx.data[0] = usb_8dev_error;
     // TODO see usbd_8dev_transmit()'s comment
     if (usbd_8dev_transmit_data_packet(&usbd_handle)) {
-        //Error_Handler();
+        //error_handler();
+    }
+    // Can't put this in HAL_CAN_ErrorCallback because HAL calls must be from
+    // main thread.
+    if (usb_8dev_error == USB_8DEV_ERROR_BOF) {
+        led_blink(LED_RED);
     }
 }
 
@@ -206,7 +211,7 @@ void usbd_8dev_transmit_can_error() {
  */
 void usbd_8dev_receive() {
     if (usbd_8dev_receive_data_packet(&usbd_handle)) {
-        Error_Handler();
+        error_handler();
     }
 }
 
@@ -260,10 +265,10 @@ static uint8_t usbd_8dev_itf_rcv_cmd(uint8_t* buf, uint8_t *len) {
                 requests |= REQ_CAN_CLOSE;
                 break;
             default:
-                Error_Handler();
+                error_handler();
         }
     } else {
-        Error_Handler();
+        error_handler();
     }
     return USBD_OK;
 }
@@ -286,7 +291,7 @@ static uint8_t usbd_8dev_itf_rcv_data(uint8_t* buf, uint8_t *len) {
         memcpy(buf_cantx->Data, tmp_ptr, buf_datarx.dlc);
         requests |= REQ_CAN_TX;
     } else {
-        Error_Handler();
+        error_handler();
     }
     return USBD_OK;
 }
@@ -358,6 +363,6 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {
     requests |= REQ_CAN_ERR;
 }
 
-static void Error_Handler(void) {
+static void error_handler(void) {
     led_on(LED_RED);
 }

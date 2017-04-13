@@ -1,10 +1,10 @@
 #include "stm32f0xx_it.h"
-#include "stm32f0xx_hal.h"
 #include "can.h" // Needed for CANx defines
-#include "led.h"
+#include "led.h" // Needed for TIMx defines
 
 extern PCD_HandleTypeDef hpcd;
 extern CAN_HandleTypeDef can_handle;
+extern TIM_HandleTypeDef tim_handle;
 
 /******************************************************************************
  * Processor Exception Handlers
@@ -34,6 +34,10 @@ void USB_IRQHandler(void) {
     HAL_PCD_IRQHandler(&hpcd);
 }
 
-void CANx_RX_IRQHandler(void) {
+void CANx_IRQHandler(void) {
     HAL_CAN_IRQHandler(&can_handle);
+}
+
+void TIMx_IRQHandler(void) {
+    HAL_TIM_IRQHandler(&tim_handle);
 }

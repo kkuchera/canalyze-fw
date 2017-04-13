@@ -6,11 +6,11 @@
 
 // Definition for CANx clock resources
 #define CANx                            CAN
-#define CANx_CLK_ENABLE()               __HAL_RCC_CAN1_CLK_ENABLE()
-#define CANx_GPIO_CLK_ENABLE()          __HAL_RCC_GPIOB_CLK_ENABLE()
+#define CANx_CLK_ENABLE                 __HAL_RCC_CAN1_CLK_ENABLE
+#define CANx_GPIO_CLK_ENABLE            __HAL_RCC_GPIOB_CLK_ENABLE
 
-#define CANx_FORCE_RESET()              __HAL_RCC_CAN1_FORCE_RESET()
-#define CANx_RELEASE_RESET()            __HAL_RCC_CAN1_RELEASE_RESET()
+#define CANx_FORCE_RESET                __HAL_RCC_CAN1_FORCE_RESET
+#define CANx_RELEASE_RESET              __HAL_RCC_CAN1_RELEASE_RESET
 
 // Definition for CANx Pins
 #define CANx_TX_PIN                     GPIO_PIN_9
@@ -21,8 +21,8 @@
 #define CANx_RX_AF                      GPIO_AF4_CAN
 
 // Definition for CANx's NVIC
-#define CANx_RX_IRQn                    CEC_CAN_IRQn
-#define CANx_RX_IRQHandler              CEC_CAN_IRQHandler
+#define CANx_IRQn                       CEC_CAN_IRQn
+#define CANx_IRQHandler                 CEC_CAN_IRQHandler
 
 
 /* Note: if the synchronization jump width (sjw), bit segment 1 (bs1) or bit

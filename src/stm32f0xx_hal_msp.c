@@ -1,9 +1,10 @@
 #include "can.h"
+#include "led.h"
 
 /**
  * Microcontroller specific CAN initialization.
  *
- * Set and configures the CAN pins and interrupts
+ * Set and configures the CAN pins and interrupts.
  */
 void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
     UNUSED(hcan);
@@ -31,9 +32,9 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
 
     HAL_GPIO_Init(CANx_RX_GPIO_PORT, &GPIO_InitStruct);
 
-    // Enable CANx RX complete interrupt
-    HAL_NVIC_SetPriority(CANx_RX_IRQn, 4, 0);
-    HAL_NVIC_EnableIRQ(CANx_RX_IRQn);
+    // Enable CANx interrupt
+    HAL_NVIC_SetPriority(CANx_IRQn, 4, 0);
+    HAL_NVIC_EnableIRQ(CANx_IRQn);
 }
 
 /**
@@ -53,6 +54,34 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef *hcan) {
     HAL_GPIO_DeInit(CANx_RX_GPIO_PORT, CANx_RX_PIN);
 
     // Disable CANx RX complete interrupt
-    HAL_NVIC_DisableIRQ(CANx_RX_IRQn);
+    HAL_NVIC_DisableIRQ(CANx_IRQn);
 }
 
+/**
+ * Microcontroller specific TIM initialization.
+ */
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim) {
+    UNUSED(htim);
+
+    // Enable TIMx clock
+    TIMx_CLK_ENABLE();
+
+    // Enable TIMx interrupt
+    HAL_NVIC_SetPriority(TIMx_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(TIMx_IRQn);
+}
+
+
+/**
+ * Microcontroller specific TIM deinitialization.
+ */
+void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim) {
+    UNUSED(htim);
+
+    // Reset TIMx
+    TIMx_FORCE_RESET();
+    TIMx_RELEASE_RESET();
+
+    // Disable TIMx complete interrupt
+    HAL_NVIC_DisableIRQ(TIMx_IRQn);
+}
