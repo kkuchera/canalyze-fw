@@ -62,7 +62,7 @@ flash: $(TARGET).elf
 	openocd -f $(OPENOCD_CFG) -c "program $< verify reset exit"
 
 dfu: $(TARGET).bin
-	dfu-util -a 0 -s 0x08000000 -D $<
+	dfu-util -d 0483:df11 -a 0 -s 0x08000000 -D $<
 
 # Application dependencies
 $(TARGET).hex: $(TARGET).elf 
