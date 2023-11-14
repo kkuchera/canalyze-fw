@@ -25,7 +25,7 @@ $ cd canalyze-fw
 $ mkdir lib
 ```
 Download and unzip
-[STM32CubeF0](http://www.st.com/en/embedded-software/stm32cubef0.html) to lib/.
+[STM32CubeF0 v1.11.0](http://www.st.com/en/embedded-software/stm32cubef0.html) to lib/.
 
 Connect the BOOT pins and press reset. Then run
 ```shell

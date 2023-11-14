@@ -30,9 +30,10 @@ OBJS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(wildcard $(SRCDIR)/*.c))
 OBJS += $(patsubst $(SRCDIR)/%.s, $(OBJDIR)/%.o, $(wildcard $(SRCDIR)/*.s))
 
 # STM32Cube variables
-CUBELIBDIR = $(LIBDIR)/STM32Cube_FW_F0_V1.7.0
+CUBELIBDIR = $(LIBDIR)/STM32Cube_FW_F0_V1.11.0
 CUBEOBJDIR = $(LIBDIR)/stm32cube
 CUBELIB = $(CUBEOBJDIR)/stm32cube.a
+HAL_CAN_LEGACY_OBJ = $(CUBEOBJDIR)/stm32f0xx_hal_can_legacy.o
 HAL_SRCDIR = $(CUBELIBDIR)/Drivers/STM32F0xx_HAL_Driver/Src
 HAL_SRCS = $(filter-out $(wildcard $(HAL_SRCDIR)/*template.c), $(wildcard $(HAL_SRCDIR)/*.c))
 HAL_OBJS = $(patsubst $(HAL_SRCDIR)/%.c, $(CUBEOBJDIR)/%.o, $(HAL_SRCS))
@@ -84,8 +85,11 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.s
 	@mkdir -p $(OBJDIR)
 	$(CC) $(CFLAGS) $(INCLUDE) -MMD -o $@ -c $<
 
+$(HAL_CAN_LEGACY_OBJ): $(HAL_SRCDIR)/Legacy/stm32f0xx_hal_can.c
+	$(CC) $(CFLAGSLIB) $(INCLUDE) -o $@ -c $<
+
 # STM32Cube dependencies
-$(CUBELIB): $(HAL_OBJS) $(USB_OBJS)
+$(CUBELIB): $(HAL_OBJS) $(USB_OBJS) $(HAL_CAN_LEGACY_OBJ)
 	$(AR) -r $@ $^
 
 $(CUBEOBJDIR)/%.o: $(HAL_SRCDIR)/%.c
