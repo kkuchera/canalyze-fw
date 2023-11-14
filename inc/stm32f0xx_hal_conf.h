@@ -52,7 +52,8 @@
   */
 #define HAL_MODULE_ENABLED
 /* #define HAL_ADC_MODULE_ENABLED */
-#define HAL_CAN_MODULE_ENABLED
+/* #define HAL_CAN_MODULE_ENABLED */
+#define HAL_CAN_LEGACY_MODULE_ENABLED
 /*#define HAL_CEC_MODULE_ENABLED*/
 /* #define HAL_COMP_MODULE_ENABLED */
 #define HAL_CORTEX_MODULE_ENABLED
@@ -208,6 +209,10 @@
 #ifdef HAL_CAN_MODULE_ENABLED
  #include "stm32f0xx_hal_can.h"
 #endif /* HAL_CAN_MODULE_ENABLED */
+
+#ifdef HAL_CAN_LEGACY_MODULE_ENABLED
+#include "Legacy/stm32f0xx_hal_can_legacy.h"
+#endif
 
 #ifdef HAL_CEC_MODULE_ENABLED
  #include "stm32f0xx_hal_cec.h"
